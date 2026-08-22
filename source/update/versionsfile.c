@@ -25,9 +25,10 @@
 #include "../console.h"
 #include "../util.h"
 #include "versionsfile.h"
+#include "cacert_bin.h"
 
-#define _RRC_VERSIONSFILE_URL "http://update.rwfc.net:8000/RetroRewind/RetroRewindVersion.txt"
-#define _RRC_VERSIONS_FILE_REMOVED_URL "http://update.rwfc.net:8000/RetroRewind/RetroRewindDelete.txt"
+#define _RRC_VERSIONSFILE_URL "https://update.rwfc.net/RetroRewind/RetroRewindVersion.txt"
+#define _RRC_VERSIONS_FILE_REMOVED_URL "https://update.rwfc.net/RetroRewind/RetroRewindDelete.txt"
 // max array size
 #define _RRC_SPLIT_LIM 4096
 
@@ -89,6 +90,14 @@ int rrc_versionsfile_get_versionsfile(char **result)
     curl = curl_easy_init();
     if (curl)
     {
+                struct curl_blob ca_blob;
+
+        ca_blob.data = (void *)cacert_bin;
+        ca_blob.len = (size_t)cacert_bin_size;
+        ca_blob.flags = 0;
+
+        curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &ca_blob);
+        
         curl_easy_setopt(curl, CURLOPT_URL, _RRC_VERSIONSFILE_URL);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
@@ -136,6 +145,14 @@ int rrc_versionsfile_get_removed_files(char **result)
     CURL *curl = curl_easy_init();
     if (curl)
     {
+                struct curl_blob ca_blob;
+
+        ca_blob.data = (void *)cacert_bin;
+        ca_blob.len = (size_t)cacert_bin_size;
+        ca_blob.flags = 0;
+
+        curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &ca_blob);
+        
         curl_easy_setopt(curl, CURLOPT_URL, _RRC_VERSIONS_FILE_REMOVED_URL);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);

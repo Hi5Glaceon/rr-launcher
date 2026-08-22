@@ -37,6 +37,7 @@
 #include "../shutdown.h"
 #include "../versionutils.h"
 #include "../sd.h"
+#include "../server_status.h"
 
 #define _RRC_UPDATE_ZIP_NAME "rr.update.zip"
 
@@ -587,6 +588,8 @@ struct rrc_result rrc_update_do_updates(void *xfb, int *count, bool *updates_ins
     {
         return rrc_result_create_error_misc_update("Failed to connect to the internet. Please check your connection and internet settings.");
     }
+
+    rr_server_status_fetch();
 
     *updates_installed = false;
     char *versionsfile = NULL;
