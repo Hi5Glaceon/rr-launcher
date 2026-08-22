@@ -1,0 +1,77 @@
+{
+  "401": {
+    "name": "InvalidAction",
+    "description": "The requested UPnP action is not supported by the device.",
+    "solution": "Check that the router exposes the requested WANIPConnection or WANPPPConnection service."
+  },
+  "402": {
+    "name": "InvalidArgs",
+    "description": "One or more action arguments are invalid.",
+    "solution": "Check the requested port, protocol, internal client and lease parameters."
+  },
+  "404": {
+    "name": "InvalidVar",
+    "description": "An invalid state variable was referenced.",
+    "solution": "The router may not support the requested UPnP operation."
+  },
+  "501": {
+    "name": "ActionFailed",
+    "description": "The UPnP device could not complete the requested action.",
+    "solution": "Check the router UPnP status and its system log for more details."
+  },
+  "606": {
+    "name": "ActionNotAuthorized",
+    "description": "The requested action requires authorization and the sender was not authorized.",
+    "solution": "Enable UPnP or port-mapping permissions on the router and check its access-control settings."
+  },
+  "715": {
+    "name": "WildCardNotPermittedInSrcIP",
+    "description": "The source IP address cannot be wildcarded.",
+    "solution": "The router requires a specific source address for this mapping."
+  },
+  "716": {
+    "name": "WildCardNotPermittedInExtPort",
+    "description": "The external port cannot be wildcarded.",
+    "solution": "Use a specific external port instead of a wildcard."
+  },
+  "718": {
+    "name": "ConflictInMappingEntry",
+    "description": "The requested port mapping conflicts with a mapping already assigned to another client.",
+    "solution": "Remove the existing mapping or use another external port."
+  },
+  "724": {
+    "name": "SamePortValuesRequired",
+    "description": "The internal and external port values must be the same.",
+    "solution": "Use the same port number for the external and internal mapping."
+  },
+  "725": {
+    "name": "OnlyPermanentLeasesSupported",
+    "description": "The NAT implementation only supports permanent port mappings.",
+    "solution": "Use a permanent lease (lease duration 0)."
+  },
+  "726": {
+    "name": "RemoteHostOnlySupportsWildcard",
+    "description": "RemoteHost must be a wildcard and cannot be a specific address.",
+    "solution": "Leave the remote host empty or wildcard."
+  },
+  "727": {
+    "name": "ExternalPortOnlySupportsWildcard",
+    "description": "ExternalPort must be a wildcard and cannot be a specific port.",
+    "solution": "The router requires a wildcard external port."
+  },
+  "728": {
+    "name": "NoPortMapsAvailable",
+    "description": "There are not enough free port mappings available to complete the request.",
+    "solution": "Remove unused port mappings or free a slot on the router."
+  },
+  "729": {
+    "name": "ConflictWithOtherMechanisms",
+    "description": "The requested mapping conflicts with another port-mapping mechanism.",
+    "solution": "Check for conflicting manual, PCP, NAT-PMP or vendor-specific mappings."
+  },
+  "732": {
+    "name": "WildCardNotPermittedInIntPort",
+    "description": "The internal port cannot be wildcarded.",
+    "solution": "Use a specific internal port."
+  }
+}
