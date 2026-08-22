@@ -50,7 +50,7 @@ LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS	:=	-lcurl -lpng -lfat -lzip -lbz2 -ldi -lmxml -lz -lwiisocket -lmbedtls -lmbedcrypto -lmbedx509 -lwiiuse -lbte -logc -lm
+LIBS := -lcurl -lpng -lfat -lzip -lbz2 -ldi -lmxml -lz -logc -lwiisocket -lmbedtls -lmbedcrypto -lmbedx509 -lwiiuse -lbte -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -180,6 +180,11 @@ $(GAME_DOL_LOADER).o: $(GAME_DOL_LOADER).c
 # This rule links in binary data with the .bin extension
 #---------------------------------------------------------------------------------
 %.bin.o	:	%.bin
+#---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	$(bin2o)
+
+%.json.o	:	%.json
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
 	$(bin2o)
