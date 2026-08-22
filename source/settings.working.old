@@ -199,18 +199,9 @@ static void rrc_extras_display(void *xfb)
                     putc(' ', stdout);
             }
 
-            if (i == 3 && rr_server_status_has_alert())
-            {
-            printf("%sServer Status (1)%s",
-            rr_server_status_alert_color(),
-            RRC_CON_ANSI_CLR);
-            }
-            else
-            {
             printf("%s", entries[i]);
-            }
-
-printf("\n");
+            printf(RRC_CON_ANSI_CLR);
+            printf("\n");
         }
 
         printf("\n");
@@ -244,6 +235,21 @@ printf("\n");
                 if (selected_idx == 3)
                 {
                     rr_server_status_test();
+
+                    while (1)
+                    {
+                        struct pad_state result_pad =
+                            rrc_pad_buttons();
+
+                        if (rrc_pad_home_pressed(result_pad) ||
+                            rrc_pad_a_pressed(result_pad) ||
+                            rrc_pad_b_pressed(result_pad))
+                            break;
+
+                        rrc_shutdown_check();
+                        usleep(RRC_WPAD_LOOP_TIMEOUT);
+                    }
+
                     break;
                 }
 
@@ -280,34 +286,6 @@ printf("UPnP: %s%s%s\n",
        upnp_ok ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
        upnp_ok ? "SUCCESS" : "FAILED",
        RRC_CON_ANSI_CLR);
-
-if (!upnp_ok)
-{
-    const rr_upnp_error_info_t *upnp_error = rr_upnp_last_error();
-
-    printf("\n");
-
-    if (upnp_error && upnp_error->code > 0)
-    {
-        printf("Error Code: %d\n", upnp_error->code);
-        printf("Error: %s%s%s\n",
-               RRC_CON_ANSI_FG_BRIGHT_YELLOW,
-               upnp_error->name,
-               RRC_CON_ANSI_CLR);
-        printf("\n%s\n", upnp_error->description);
-        printf("\nSolution:\n%s\n", upnp_error->solution);
-    }
-    else
-    {
-        printf("No router error code was returned.\n");
-
-        if (upnp_error && upnp_error->description[0])
-            printf("%s\n", upnp_error->description);
-
-        if (upnp_error && upnp_error->solution[0])
-            printf("\nSolution:\n%s\n", upnp_error->solution);
-    }
-}
 
                     while (1)
                     {
@@ -721,21 +699,11 @@ enum rrc_settings_result rrc_settings_display(void *xfb, struct rrc_settingsfile
                 }
             }
 
-            if (entry->label == extras_label && rr_server_status_has_alert())
-            {
-                printf("%sExtras (1)%s  ",
-                       rr_server_status_alert_color(),
-                       RRC_CON_ANSI_CLR);
-            }
-            else
-            {
-                printf("%s  ", entry->label);
-            }
+            printf("%s  ", entry->label);
 
             if (entry->type == ENTRY_TYPE_SELECT)
             {
                 int label_len = strlen(entry->label);
-
                 if (label_len < max_label_len)
                 {
                     for (int i = 0; i < max_label_len - label_len; i++)
@@ -763,6 +731,7 @@ enum rrc_settings_result rrc_settings_display(void *xfb, struct rrc_settingsfile
                 }
             }
 
+            // end
             printf(RRC_CON_ANSI_CLR);
             row++;
         }

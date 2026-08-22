@@ -32,13 +32,13 @@ static rrc_time_tick _shutdown_time = 0;
 
 void power_callback()
 {
-    _shutdown_time = gettime();
+    _shutdown_time = rrc_gettime();
     _shutdown_state = SYS_POWEROFF;
 }
 
 void reset_callback(u32 irq, void *ctx)
 {
-    _shutdown_time = gettime();
+    _shutdown_time = rrc_gettime();
     _shutdown_state = SYS_RETURNTOMENU;
 }
 
@@ -50,7 +50,7 @@ void rrc_shutdown_register_callbacks()
 
 void rrc_shutdown_check()
 {
-    int time_since_trigger = diff_msec(_shutdown_time, gettime());
+    int time_since_trigger = diff_msec(_shutdown_time, rrc_gettime());
 
     if (_shutdown_state != -1 && time_since_trigger < RRC_SHUTDOWN_CHECK_TIME_MS)
     {

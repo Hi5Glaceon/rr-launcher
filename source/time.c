@@ -19,16 +19,16 @@
 
 #include <types.h>
 #include <unistd.h>
+#include <ogc/lwp_watchdog.h>
 #include "time.h"
 #include "shutdown.h"
 
 void rrc_usleep(u32 usec)
 {
-#define LONG_USLEEP (10 * 1000 * 1000) // 10 seconds
-#define LONG_UPERIOD (100 * 1000)      // 100ms
-#define SHORT_UPERIOD (1000)           // 1ms
+#define LONG_USLEEP  (10 * 1000 * 1000)
+#define LONG_UPERIOD (100 * 1000)
+#define SHORT_UPERIOD (1000)
 
-    // For very long sleeps, use a slightly higher period to reduce the number of wakeups
     u32 period = usec > LONG_USLEEP ? LONG_UPERIOD : SHORT_UPERIOD;
 
     for (int i = 0; i < usec / period; i++)
@@ -43,4 +43,9 @@ void rrc_usleep(u32 usec)
         usleep(rem);
         rrc_shutdown_check();
     }
+}
+
+rrc_time_tick rrc_gettime(void)
+{
+    return (rrc_time_tick)gettime();
 }

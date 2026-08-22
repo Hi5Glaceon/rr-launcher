@@ -54,6 +54,8 @@
 #include "pad.h"
 #include "crash.h"
 #include "ephfile.h"
+#include "upnp.h"
+#include "server_status.h"
 
 /* 100ms */
 #define DISKCHECK_DELAY 100000
@@ -75,7 +77,7 @@ int main(int argc, char **argv)
     u32 mem1_hi = RRC_RUNTIME_EXT_DOL_SAFE_START;
     u32 mem2_hi = *(u32 *)0x80003128;
 
-    s64 systime_start = gettime();
+    s64 systime_start = rrc_gettime();
 
     // response codes for various library functions
     int res;
@@ -256,6 +258,12 @@ int main(int argc, char **argv)
         }
     }
 
+    /*
+     * Fetch the server status once during startup. The result is cached
+     * and reused by the Extras -> Server Status screen.
+     */
+    rr_server_status_fetch();
+
 #define INTERRUPT_TIME 5000000 /* 5 seconds */
     rrc_con_clear(true);
 
@@ -300,8 +308,31 @@ int main(int argc, char **argv)
 interrupt_loop_end:
 
     rrc_con_clear(true);
+    
+    // adding UPnP indicator at launch screen
+    uint16_t upnp_port = 0;
+    bool upnp_ok = rr_upnp_prepare_mkwii_mapping(&upnp_port);
+    (void)upnp_port;
+
+    // Receive the current server status.
+    bool server_status_ok = rr_server_status_fetch();
+    bool received_server_message =
+    server_status_ok && rr_server_status_has_alert();
 
     rrc_con_update("Initialise DVD: Read Game DOL", 25);
+    rrc_con_cursor_seek_to(rrc_con_get_rows() - 2, RRC_CON_EDGE_PAD);
+
+    printf("UPnP: %s%s%s",
+           upnp_ok ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
+           upnp_ok ? "SUCCESS" : "FAILED",
+           RRC_CON_ANSI_CLR);
+
+    if (received_server_message)
+    {
+        printf("\n Received server message");
+        printf("\n You can find it in Extras.");
+    }
+           // colorful UPnP indicator
 
     // read dol
     struct rrc_dol *dol = (struct rrc_dol *)0x80901000;
@@ -362,7 +393,7 @@ interrupt_loop_end:
 
     WPAD_Shutdown();
 
-    s64 systime_end = gettime();
+    s64 systime_end = rrc_gettime();
 
     rrc_dbg_printf("time taken: %.3f seconds\n", ((f64)diff_msec(systime_start, systime_end)) / 1000.0);
 
