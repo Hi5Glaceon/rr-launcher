@@ -38,7 +38,6 @@
 #include "../console.h"
 #include "../exception.h"
 #include <riivo.h>
-#include "../util.h"
 #include "../settingsfile.h"
 #include "../versionutils.h"
 #include <bitflags.h>
