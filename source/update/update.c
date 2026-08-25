@@ -29,6 +29,7 @@
 
 #include "versionsfile.h"
 #include "update.h"
+#include "cacert_bin.h"
 #include "../sd.h"
 #include "../util.h"
 #include "../console.h"
@@ -36,7 +37,6 @@
 #include "../prompt.h"
 #include "../shutdown.h"
 #include "../versionutils.h"
-#include "../sd.h"
 #include "../server_status.h"
 
 #define _RRC_UPDATE_ZIP_NAME "rr.update.zip"
@@ -234,6 +234,12 @@ CURLcode _rrc_update_get_zip_size(char *url, curl_off_t *size)
     CURL *curl = curl_easy_init();
     if (curl)
     {
+        struct curl_blob ca_blob;
+        ca_blob.data = (void *)cacert_bin;
+        ca_blob.len = (size_t)cacert_bin_size;
+        ca_blob.flags = 0;
+        curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &ca_blob);
+
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
@@ -281,6 +287,12 @@ struct rrc_result rrc_update_download_zip(char *url, char *filename, int current
         // Set low speed limit to 30 bytes/s for at least 60 seconds before aborting
         curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 30L);
         curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+
+        struct curl_blob ca_blob;
+        ca_blob.data = (void *)cacert_bin;
+        ca_blob.len = (size_t)cacert_bin_size;
+        ca_blob.flags = 0;
+        curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &ca_blob);
 
         /* Perform the request, cres gets the return code */
         cres = curl_easy_perform(curl);
@@ -343,6 +355,29 @@ static struct rrc_result mkdir_recursive(const char *fp)
     return rrc_result_success;
 }
 
+/*
+ * Rejects ZIP entry names that could escape the current extraction
+ * directory ("zip slip"): a leading '/' (absolute path) or any ".."
+ * path segment. Update archives are expected to come from our own
+ * release pipeline, but there's no reason to trust an entry name any
+ * more than any other external input - a corrupted download or a
+ * compromised/mirrored release could otherwise write outside the
+ * intended folder.
+ */
+static bool rr_update_zip_entry_path_is_safe(const char *name)
+{
+    if (!name || name[0] == '\0')
+        return false;
+
+    if (name[0] == '/' || name[0] == '\\')
+        return false;
+
+    if (strstr(name, "..") != NULL)
+        return false;
+
+    return true;
+}
+
 struct rrc_result rrc_update_extract_zip_archive()
 {
     int zip_err;
@@ -402,6 +437,11 @@ struct rrc_result rrc_update_extract_zip_archive()
         if (stat.name[0] == 0)
         {
             return rrc_result_create_error_misc_update("Empty file name in ZIP archive");
+        }
+
+        if (!rr_update_zip_entry_path_is_safe(stat.name))
+        {
+            return rrc_result_create_error_misc_update("ZIP archive entry has an unsafe file path");
         }
 
         unsigned long long sd_free;
