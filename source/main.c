@@ -132,15 +132,15 @@ int main(int argc, char **argv)
             rrc_result_error_check_error_normal(err, xfb);
         }
 
-        FILE *afd = fopen("sd:/" RRC_RETRO_REWIND_CHANNEL_DIR "/accept.txt", "w");
-        if (afd == NULL)
+        FILE *wfd = fopen("sd:/" RRC_RETRO_REWIND_CHANNEL_DIR "/accept.txt", "w");
+        if (wfd == NULL)
         {
             struct rrc_result err = rrc_result_create_error_errno(errno, "Failed to create acceptance file. The SD card may be write locked.");
             rrc_result_error_check_error_normal(err, xfb);
         }
         else
         {
-            fclose(afd);
+            fclose(wfd);
         }
 
         first_open = true;
@@ -259,10 +259,11 @@ int main(int argc, char **argv)
     }
 
     /*
-     * Fetch the server status once during startup. The result is cached
-     * and reused by the Extras -> Server Status screen.
+     * Server status is fetched further below, right before it's
+     * displayed on the launch screen - fetching it here too was
+     * redundant (an extra full HTTPS round-trip on every boot whose
+     * result was immediately discarded).
      */
-    rr_server_status_fetch();
 
 #define INTERRUPT_TIME 5000000 /* 5 seconds */
     rrc_con_clear(true);
@@ -314,8 +315,16 @@ interrupt_loop_end:
     bool upnp_ok = rr_upnp_prepare_mkwii_mapping(&upnp_port);
     (void)upnp_port;
 
-    // Receive the current server status.
-    bool server_status_ok = rr_server_status_fetch();
+    // Receive the current server status. If the update check above already
+    // ran (auto_update on, not loaded from the game, not crashed), it will
+    // have already fetched and cached this - re-fetching here would just be
+    // a second, redundant network round-trip for the same result.
+    bool status_already_attempted =
+        stored_settings.auto_update && !loaded_from_rr && !crashed;
+
+    bool server_status_ok = status_already_attempted
+        ? rr_server_status_is_cached()
+        : rr_server_status_fetch();
     bool received_server_message =
     server_status_ok && rr_server_status_has_alert();
 

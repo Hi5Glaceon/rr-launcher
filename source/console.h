@@ -21,6 +21,7 @@
 #define RRC_CONSOLE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #define _RRC_PROGRESS_ROW 4
 
@@ -102,5 +103,31 @@ void rrc_con_print_state();
 void rrc_con_clear_line(int row);
 
 void rrc_con_clear(bool keep_splash);
+
+/*
+ * Word-wraps and prints `text` at `width` columns, using the current
+ * cursor position as the start of the first line. A single line break
+ * ("\n"/"\r\n") in `text` ends the current line as usual; two or more
+ * consecutive line breaks (an intentional blank line/paragraph break)
+ * are preserved as an empty output line instead of being collapsed
+ * into one. Pass rrc_con_get_cols() - (RRC_CON_EDGE_PAD * 2) as
+ * `width` to always match the console's actual usable width for the
+ * current video mode.
+ */
+void rrc_con_print_wrapped(const char *text, int width);
+
+/*
+ * Converts a NUL-terminated UTF-8 string in `text` to an ASCII-only
+ * string written into `out` (which may safely alias `text` for an
+ * in-place conversion). The Wii's built-in console font only reliably
+ * displays printable ASCII; any multi-byte UTF-8 sequence is either
+ * transliterated to a readable ASCII equivalent (e.g. U+00FC "ü" ->
+ * "ue", an en/em dash -> "-") or, if there is no sensible ASCII
+ * equivalent, replaced with '?'. Never writes more than out_size
+ * bytes including the terminating NUL. Use this on any text that
+ * comes from outside the app (server status messages, UPnP error
+ * text, ...) before printing it.
+ */
+void rrc_con_ascii_safe(const char *text, char *out, size_t out_size);
 
 #endif

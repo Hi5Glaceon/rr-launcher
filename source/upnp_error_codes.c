@@ -1,6 +1,6 @@
 #include "upnp_error_codes.h"
-#include "upnp_error_codes.h"
 #include "upnp_error_codes_bin.h"
+#include "console.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -55,6 +55,7 @@ static bool rr_json_read_string(const char *start, const char *end,
             if (*q == '"')
             {
                 out[used] = '\0';
+                rrc_con_ascii_safe(out, out, out_size);
                 return true;
             }
 
@@ -93,6 +94,57 @@ static bool rr_json_read_string(const char *start, const char *end,
     }
 
     return false;
+}
+
+/*
+ * Finds the '}' that closes the JSON object starting at `object_start`
+ * (which must point at the opening '{'), scanning no further than
+ * `end`. Unlike a plain strchr(object_start, '}'), this tracks nesting
+ * depth and skips over the contents of quoted strings (including
+ * escaped characters), so a literal '{' or '}' inside a "description"
+ * or "solution" string value - e.g. a placeholder like "{router_ip}" -
+ * doesn't cause the object to be cut short.
+ */
+static const char *rr_json_find_object_end(const char *object_start,
+                                           const char *end)
+{
+    int depth = 0;
+    bool in_string = false;
+
+    for (const char *p = object_start; p < end; ++p)
+    {
+        if (in_string)
+        {
+            if (*p == '\\' && p + 1 < end)
+            {
+                ++p;
+                continue;
+            }
+
+            if (*p == '"')
+                in_string = false;
+
+            continue;
+        }
+
+        if (*p == '"')
+        {
+            in_string = true;
+        }
+        else if (*p == '{')
+        {
+            ++depth;
+        }
+        else if (*p == '}')
+        {
+            --depth;
+
+            if (depth == 0)
+                return p;
+        }
+    }
+
+    return NULL;
 }
 
 bool rr_upnp_error_lookup(int code, rr_upnp_error_info_t *result)
@@ -141,7 +193,7 @@ bool rr_upnp_error_lookup(int code, rr_upnp_error_info_t *result)
             if (!object_start || object_start >= json_end)
                 break;
 
-            const char *object_end = strchr(object_start, '}');
+            const char *object_end = rr_json_find_object_end(object_start, json_end);
 
             if (!object_end || object_end > json_end)
                 break;

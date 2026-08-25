@@ -126,10 +126,9 @@ if (inet_aton(host, &addr.sin_addr) == 0) {
     size_t body_len = body ? strlen(body) : 0;
     char req[UPNP_BUF];
     int req_len = snprintf(req, sizeof(req),
-        "%s %s HTTP/1.1\r\nHost: %s:%u\r\nConnection: close\r\n%s%s%s",
+        "%s %s HTTP/1.1\r\nHost: %s:%u\r\nConnection: close\r\n%s%s",
         body ? "POST" : "GET", path, host, (unsigned)port,
-        extra_headers ? extra_headers : "", body ? "Content-Length: " : "",
-        body ? "" : "");
+        extra_headers ? extra_headers : "", body ? "Content-Length: " : "");
     if (req_len < 0 || (size_t)req_len >= sizeof(req)) { close(s); return false; }
     if (body) {
         int add = snprintf(req + req_len, sizeof(req) - (size_t)req_len,
@@ -291,13 +290,7 @@ bool rr_upnp_discover(rr_upnp_device_t *device, uint32_t timeout_ms)
             return false;
         }
 
-        if (ready == 0)
-        {
-            elapsed += wait_ms;
-            continue;
-        }
-
-        if (FD_ISSET(s, &readfds))
+        if (ready > 0 && FD_ISSET(s, &readfds))
         {
             int n = recvfrom(s, buf, sizeof(buf)-1, 0, NULL, NULL);
 
@@ -305,18 +298,30 @@ bool rr_upnp_discover(rr_upnp_device_t *device, uint32_t timeout_ms)
             {
                 buf[n] = 0;
 
-                if (!rr_extract_header(buf, "LOCATION",
-                                        device->location,
-                                        sizeof(device->location)))
+                /*
+                 * The SSDP multicast M-SEARCH can draw more than one
+                 * response (other UPnP devices on the network, or the
+                 * router itself replying more than once for
+                 * reliability, as is normal for SSDP over UDP).
+                 * Previously, any single packet that didn't yield a
+                 * usable LOCATION/control URL caused the whole
+                 * discovery to give up immediately, even though a
+                 * valid router response could still be on its way.
+                 * Now a non-matching packet is just discarded and we
+                 * keep listening until the timeout actually elapses.
+                 */
+                if (rr_extract_header(buf, "LOCATION",
+                                       device->location,
+                                       sizeof(device->location)) &&
+                    rr_fetch_control_url(device))
                 {
                     close(s);
-                    return false;
+                    return true;
                 }
-
-                close(s);
-                return rr_fetch_control_url(device);
             }
         }
+
+        elapsed += wait_ms;
     }
 
     close(s);

@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include <gctypes.h>
 #include <gccore.h>
 
@@ -197,4 +198,162 @@ void rrc_con_clear(bool keep_version)
     {
         rrc_con_display_version();
     }
+}
+
+void rrc_con_print_wrapped(const char *text, int width)
+{
+    if (!text)
+        return;
+
+    if (width < 1)
+        width = 1;
+
+    const char *p = text;
+
+    while (*p)
+    {
+        while (*p == ' ' || *p == '\t')
+            p++;
+
+        if (*p == '\r' && *(p + 1) == '\n')
+        {
+            printf("\n");
+            p += 2;
+            continue;
+        }
+
+        if (*p == '\n' || *p == '\r')
+        {
+            printf("\n");
+            p++;
+            continue;
+        }
+
+        if (!*p)
+            break;
+
+        const char *line_start = p;
+        const char *last_space = NULL;
+        int len = 0;
+
+        while (*p && *p != '\n' && *p != '\r')
+        {
+            if (*p == ' ' || *p == '\t')
+                last_space = p;
+
+            if (len >= width)
+                break;
+
+            p++;
+            len++;
+        }
+
+        if (*p && *p != '\n' && *p != '\r' && len >= width && last_space)
+        {
+            int line_len = (int)(last_space - line_start);
+            printf("%.*s\n", line_len, line_start);
+            p = last_space + 1;
+        }
+        else
+        {
+            printf("%.*s\n", len, line_start);
+
+            if (*p == '\r')
+                p++;
+            if (*p == '\n')
+                p++;
+        }
+    }
+}
+
+void rrc_con_ascii_safe(const char *text, char *out, size_t out_size)
+{
+    if (!text || !out || out_size == 0)
+        return;
+
+    const char *p = text;
+    size_t used = 0;
+
+    /* Leaves room for the terminating NUL throughout. */
+    while (*p && used + 1 < out_size)
+    {
+        unsigned char c0 = (unsigned char)*p;
+
+        if (c0 < 0x80)
+        {
+            out[used++] = (char)c0;
+            p++;
+            continue;
+        }
+
+        uint32_t codepoint = 0;
+        int consumed = 0;
+
+        if ((c0 & 0xE0) == 0xC0 &&
+            ((unsigned char)p[1] & 0xC0) == 0x80)
+        {
+            codepoint = ((c0 & 0x1Fu) << 6) |
+                        ((unsigned char)p[1] & 0x3Fu);
+            consumed = 2;
+        }
+        else if ((c0 & 0xF0) == 0xE0 &&
+                 ((unsigned char)p[1] & 0xC0) == 0x80 &&
+                 ((unsigned char)p[2] & 0xC0) == 0x80)
+        {
+            codepoint = ((c0 & 0x0Fu) << 12) |
+                        (((unsigned char)p[1] & 0x3Fu) << 6) |
+                        ((unsigned char)p[2] & 0x3Fu);
+            consumed = 3;
+        }
+        else if ((c0 & 0xF8) == 0xF0 &&
+                 ((unsigned char)p[1] & 0xC0) == 0x80 &&
+                 ((unsigned char)p[2] & 0xC0) == 0x80 &&
+                 ((unsigned char)p[3] & 0xC0) == 0x80)
+        {
+            codepoint = ((c0 & 0x07u) << 18) |
+                        (((unsigned char)p[1] & 0x3Fu) << 12) |
+                        (((unsigned char)p[2] & 0x3Fu) << 6) |
+                        ((unsigned char)p[3] & 0x3Fu);
+            consumed = 4;
+        }
+
+        if (consumed == 0)
+        {
+            /* Not valid UTF-8 (or a truncated sequence) - skip just
+             * this one byte so we can't get stuck. */
+            out[used++] = '?';
+            p++;
+            continue;
+        }
+
+        const char *repl;
+
+        switch (codepoint)
+        {
+            case 0x00E4: repl = "ae"; break;  /* ä */
+            case 0x00C4: repl = "Ae"; break;  /* Ä */
+            case 0x00F6: repl = "oe"; break;  /* ö */
+            case 0x00D6: repl = "Oe"; break;  /* Ö */
+            case 0x00FC: repl = "ue"; break;  /* ü */
+            case 0x00DC: repl = "Ue"; break;  /* Ü */
+            case 0x00DF: repl = "ss"; break;  /* ß */
+            case 0x2013:                      /* – en dash */
+            case 0x2014: repl = "-";  break;  /* — em dash */
+            case 0x2018:                      /* ' */
+            case 0x2019: repl = "'";  break;  /* ' */
+            case 0x201C:                      /* " */
+            case 0x201D: repl = "\""; break;  /* " */
+            case 0x2026: repl = "..."; break;  /* … */
+            default:     repl = "?";  break;
+        }
+
+        size_t repl_len = strlen(repl);
+
+        for (size_t i = 0; i < repl_len && used + 1 < out_size; ++i)
+            out[used++] = repl[i];
+
+        p += consumed;
+    }
+
+    out[used] = '\0';
 }

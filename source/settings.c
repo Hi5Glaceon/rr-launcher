@@ -155,6 +155,30 @@ static bool prompt_save_unsaved_changes(void *xfb, const struct settings_entry *
     return result == RRC_PROMPT_RESULT_YES;
 }
 
+/*
+ * Blocks until the user presses HOME, A, or B, while still servicing
+ * shutdown requests. Used to let the user dismiss a test-result screen
+ * (UPnP Status / Ping Test / NAT Test) that stays on screen until
+ * acknowledged. Previously this loop was copy-pasted at all three call
+ * sites; now there is a single place to change if the dismiss buttons
+ * ever need to change.
+ */
+static void rrc_wait_for_result_dismiss(void)
+{
+    while (1)
+    {
+        struct pad_state result_pad = rrc_pad_buttons();
+
+        if (rrc_pad_home_pressed(result_pad) ||
+            rrc_pad_a_pressed(result_pad) ||
+            rrc_pad_b_pressed(result_pad))
+            break;
+
+        rrc_shutdown_check();
+        usleep(RRC_WPAD_LOOP_TIMEOUT);
+    }
+}
+
 #define CLEANUP             \
     free(my_stuff_options); \
     free(savegame_options); \
@@ -165,7 +189,7 @@ static bool prompt_save_unsaved_changes(void *xfb, const struct settings_entry *
 static void rrc_extras_display(void *xfb)
 {
     const char *entries[] = {
-        "Perform NAT Test",
+        "Perform NAT Test (Experimental; may take up to 50 seconds)",
         "Ping Test",
         "UPnP Status",
         "Server Status",
@@ -264,64 +288,58 @@ printf("\n");
 
                     rrc_con_cursor_seek_to(0, 26);
 
-printf("UPnP Status\n\n");
+                    printf("UPnP Status\n\n");
 
-if (upnp_ok)
-{
-    printf("Private Port: %u\n", (unsigned)private_port);
-}
-else
-{
-    printf("Private Port: unavailable\n");
-    printf("Note: Private port might be unavailable because UPnP failed.\n");
-}
-
-printf("UPnP: %s%s%s\n",
-       upnp_ok ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
-       upnp_ok ? "SUCCESS" : "FAILED",
-       RRC_CON_ANSI_CLR);
-
-if (!upnp_ok)
-{
-    const rr_upnp_error_info_t *upnp_error = rr_upnp_last_error();
-
-    printf("\n");
-
-    if (upnp_error && upnp_error->code > 0)
-    {
-        printf("Error Code: %d\n", upnp_error->code);
-        printf("Error: %s%s%s\n",
-               RRC_CON_ANSI_FG_BRIGHT_YELLOW,
-               upnp_error->name,
-               RRC_CON_ANSI_CLR);
-        printf("\n%s\n", upnp_error->description);
-        printf("\nSolution:\n%s\n", upnp_error->solution);
-    }
-    else
-    {
-        printf("No router error code was returned.\n");
-
-        if (upnp_error && upnp_error->description[0])
-            printf("%s\n", upnp_error->description);
-
-        if (upnp_error && upnp_error->solution[0])
-            printf("\nSolution:\n%s\n", upnp_error->solution);
-    }
-}
-
-                    while (1)
+                    if (upnp_ok)
                     {
-                        struct pad_state result_pad =
-                            rrc_pad_buttons();
-
-                        if (rrc_pad_home_pressed(result_pad) ||
-                            rrc_pad_a_pressed(result_pad) ||
-                            rrc_pad_b_pressed(result_pad))
-                            break;
-
-                        rrc_shutdown_check();
-                        usleep(RRC_WPAD_LOOP_TIMEOUT);
+                        printf("Private Port: %u\n", (unsigned)private_port);
                     }
+                    else
+                    {
+                        printf("Private Port: unavailable\n");
+                        printf("Note: Private port might be unavailable because UPnP failed.\n");
+                    }
+
+                    printf("UPnP: %s%s%s\n",
+                           upnp_ok ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
+                           upnp_ok ? "SUCCESS" : "FAILED",
+                           RRC_CON_ANSI_CLR);
+
+                    if (!upnp_ok)
+                    {
+                        const rr_upnp_error_info_t *upnp_error = rr_upnp_last_error();
+                        int wrap_width = rrc_con_get_cols() - (RRC_CON_EDGE_PAD * 2);
+
+                        printf("\n");
+
+                        if (upnp_error && upnp_error->code > 0)
+                        {
+                            printf("Error Code: %d\n", upnp_error->code);
+                            printf("Error: %s%s%s\n",
+                                   RRC_CON_ANSI_FG_BRIGHT_YELLOW,
+                                   upnp_error->name,
+                                   RRC_CON_ANSI_CLR);
+                            printf("\n");
+                            rrc_con_print_wrapped(upnp_error->description, wrap_width);
+                            printf("\nSolution:\n");
+                            rrc_con_print_wrapped(upnp_error->solution, wrap_width);
+                        }
+                        else
+                        {
+                            printf("No router error code was returned.\n");
+
+                            if (upnp_error && upnp_error->description[0])
+                                rrc_con_print_wrapped(upnp_error->description, wrap_width);
+
+                            if (upnp_error && upnp_error->solution[0])
+                            {
+                                printf("\nSolution:\n");
+                                rrc_con_print_wrapped(upnp_error->solution, wrap_width);
+                            }
+                        }
+                    }
+
+                    rrc_wait_for_result_dismiss();
 
                     break;
                 }
@@ -353,18 +371,7 @@ if (!upnp_ok)
                         printf("  Max              %u ms\n", ping_result.max_ms);
                     }
 
-                    while (1)
-                    {
-                        struct pad_state result_pad = rrc_pad_buttons();
-
-                        if (rrc_pad_home_pressed(result_pad) ||
-                            rrc_pad_a_pressed(result_pad) ||
-                            rrc_pad_b_pressed(result_pad))
-                            break;
-
-                        rrc_shutdown_check();
-                        usleep(RRC_WPAD_LOOP_TIMEOUT);
-                    }
+                    rrc_wait_for_result_dismiss();
 
                     break;
                 }
@@ -424,10 +431,11 @@ if (!upnp_ok)
                 else
                 printf("Using local UDP port: FAILED\n");
                 
-                printf("STUN Telekom   %s%s%s\n",
-       nat_result.stun_server1 ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
-       nat_result.stun_server1 ? "PASS" : "FAIL",
-       RRC_CON_ANSI_CLR);
+                printf("%-17s%s%s%s\n",
+                       "STUN Telekom",
+                       nat_result.stun_server1 ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
+                       nat_result.stun_server1 ? "PASS" : "FAIL",
+                       RRC_CON_ANSI_CLR);
 
             if (nat_result.stun_server1)
             {
@@ -438,11 +446,12 @@ if (!upnp_ok)
 
             printf("\n");
 
-            printf("STUN blueSIP   %s%s%s\n",
-       nat_result.stun_server2 ? RRC_CON_ANSI_FG_BRIGHT_GREEN
-                               : RRC_CON_ANSI_FG_BRIGHT_RED,
-       nat_result.stun_server2 ? "PASS" : "FAILED",
-       RRC_CON_ANSI_CLR);
+            printf("%-17s%s%s%s\n",
+                   "STUN Cloudflare",
+                   nat_result.stun_server2 ? RRC_CON_ANSI_FG_BRIGHT_GREEN
+                                           : RRC_CON_ANSI_FG_BRIGHT_RED,
+                   nat_result.stun_server2 ? "PASS" : "FAILED",
+                   RRC_CON_ANSI_CLR);
 
             if (nat_result.stun_server2)
             {
@@ -453,7 +462,8 @@ if (!upnp_ok)
 
             printf("\n");
 
-printf("NAT Test       %s%s%s\n",
+printf("%-17s%s%s%s\n",
+       "NAT Test",
        (nat_result.stun_server2 && nat_result.stun_server1)
            ? RRC_CON_ANSI_FG_BRIGHT_GREEN
            : RRC_CON_ANSI_FG_BRIGHT_RED,
@@ -462,7 +472,7 @@ printf("NAT Test       %s%s%s\n",
            : "FAILED",
        RRC_CON_ANSI_CLR);
 
-            printf("  NAT Type           ");
+            printf("  %-19s", "NAT Type");
 
             switch (nat_result.nat_type)
             {
@@ -489,7 +499,7 @@ printf("NAT Test       %s%s%s\n",
                     break;
             }
 
-            printf("  NAT Mapping        ");
+            printf("  %-19s", "NAT Mapping");
 
             switch (nat_result.nat_type)
             {
@@ -506,7 +516,7 @@ printf("NAT Test       %s%s%s\n",
                     break;
             }
 
-            printf("  NAT Filtering      ");
+            printf("  %-19s", "NAT Filtering");
 
             switch (nat_result.nat_filter_type)
             {
@@ -527,17 +537,19 @@ printf("NAT Test       %s%s%s\n",
                     break;
             }
 
-printf("  UDP outbound       %s%s%s\n",
+printf("  %-19s%s%s%s\n",
+       "UDP outbound",
        nat_result.udp_outbound ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
        nat_result.udp_outbound ? "PASS" : "FAIL",
        RRC_CON_ANSI_CLR);
 
-printf("  UDP inbound        %s%s%s\n",
+printf("  %-19s%s%s%s\n",
+       "UDP inbound",
        nat_result.udp_inbound ? RRC_CON_ANSI_FG_BRIGHT_GREEN : RRC_CON_ANSI_FG_BRIGHT_RED,
        nat_result.udp_inbound ? "PASS" : "UNKNOWN",
        RRC_CON_ANSI_CLR);
 
-            printf("  P2P compatibility  ");
+            printf("  %-19s", "P2P compatibility");
 
 switch (nat_result.p2p_compatibility)
 {
@@ -566,18 +578,7 @@ switch (nat_result.p2p_compatibility)
         break;
             }
 
-                while (1)
-                {
-                    struct pad_state result_pad = rrc_pad_buttons();
-
-                    if (rrc_pad_home_pressed(result_pad) ||
-                        rrc_pad_a_pressed(result_pad) ||
-                        rrc_pad_b_pressed(result_pad))
-                        break;
-
-                    rrc_shutdown_check();
-                    usleep(RRC_WPAD_LOOP_TIMEOUT);
-                }
+                rrc_wait_for_result_dismiss();
 
                 break;
             }

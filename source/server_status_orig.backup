@@ -10,8 +10,7 @@
 #include "pad.h"
 
 #define RR_SERVER_STATUS_URL \
-        "https://raw.githubusercontent.com/TeamWheelWizard/WheelWizard-Data/main/status.json"
-        // This one was used for development. Any other similiar JSON can be used for example rwfc.net/api/status.json in future
+    "https://raw.githubusercontent.com/TeamWheelWizard/WheelWizard-Data/main/status.json"
 
 struct rr_server_status_buffer
 {
@@ -84,7 +83,6 @@ static bool rr_server_status_read_string(
         if (*p == '"')
         {
             out[out_len] = '\0';
-            rrc_con_ascii_safe(out, out, out_size);
             return true;
         }
 
@@ -428,11 +426,6 @@ static bool rr_server_status_fetch_internal(bool display_errors)
 bool rr_server_status_fetch(void)
 {
     return rr_server_status_fetch_internal(false);
-}
-
-bool rr_server_status_is_cached(void)
-{
-    return rr_server_status_cached_valid;
 }
 
 bool rr_server_status_has_alert(void)

@@ -47,6 +47,17 @@ bool rr_stun_resolve_server(
  * Multiple calls using the same socket allow us to compare
  * the public mapping for different STUN destinations.
  */
+bool rr_stun_ping_socket(int sock, const char *server,
+                         uint16_t server_port, uint32_t timeout_ms);
+
+/*
+ * Same as rr_stun_ping_socket(), but using an already-resolved
+ * destination address to avoid repeating DNS resolution across
+ * repeated pings to the same server.
+ */
+bool rr_stun_ping_socket_addr(int sock, const struct sockaddr_in *dst,
+                              uint32_t timeout_ms);
+
 bool rr_stun_binding_socket(
     int sock,
     const char *server,

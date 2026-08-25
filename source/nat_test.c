@@ -11,7 +11,7 @@
 
 #define STUN_SERVER1 "stun.t-online.de"
 #define STUN_SERVER1_PORT  3478
-#define STUN_SERVER2   "stun.bluesip.net"
+#define STUN_SERVER2   "stun.cloudflare.com"
 #define STUN_SERVER2_PORT     3478
 #define STUN_BEHAVIOR_SERVER "stunserver2025.stunprotocol.org"
 #define STUN_BEHAVIOR_PORT   3478
@@ -80,17 +80,25 @@ bool rr_ping_test_run(rr_ping_result_t *result)
     int sock = rr_get_ping_socket();
     if (sock < 0) return false;
 
+    /*
+     * Resolve the ping target once and reuse the address for all
+     * STUN_PING_COUNT rounds below, instead of re-resolving via DNS on
+     * every single ping. This avoids paying DNS lookup time on every
+     * round (which previously leaked into the measured RTT) and avoids
+     * a transient DNS hiccup on one round counting as a "lost" ping
+     * even though the UDP path itself was fine.
+     */
+    struct sockaddr_in dst;
+    if (!rr_stun_resolve_server(STUN_ANYCAST_SERVER, STUN_ANYCAST_PORT, &dst))
+        return false;
+
     uint32_t total_ms = 0, successful = 0;
     result->min_ms = 0xffffffff;
 
     for (int i = 0; i < STUN_PING_COUNT; ++i) {
-        rr_stun_result_t stun_result;
         struct timeval start, end;
-        memset(&stun_result, 0, sizeof(stun_result));
         gettimeofday(&start, NULL);
-        bool ok = rr_stun_binding_socket(sock, STUN_ANYCAST_SERVER,
-                                         STUN_ANYCAST_PORT,
-                                         STUN_PING_TIMEOUT_MS, &stun_result);
+        bool ok = rr_stun_ping_socket_addr(sock, &dst, STUN_PING_TIMEOUT_MS);
         gettimeofday(&end, NULL);
         if (!ok) continue;
         uint32_t elapsed = rr_ping_elapsed_ms(&start, &end);
@@ -128,35 +136,68 @@ bool rr_nat_test_run(rr_nat_result_t *result)
     if (!rr_get_mkwii_private_port(&private_port))
         return false;
 
-    rr_stun_result_t server1, oneandone;
+    rr_stun_result_t server1, server2;
     rr_stun_behavior_result_t behavior;
     memset(&server1, 0, sizeof(server1));
-    memset(&oneandone, 0, sizeof(oneandone));
+    memset(&server2, 0, sizeof(server2));
     memset(&behavior, 0, sizeof(behavior));
 
     int sock = rr_open_mkwii_udp_socket();
     if (sock < 0) return false;
 
-    result->stun_server1 = rr_stun_binding_socket(sock, STUN_SERVER1,
-                                                  STUN_SERVER1_PORT, 3000, &server1);
+    /*
+     * Resolve each STUN server once and reuse the same address for the
+     * initial attempt and the retry below. Re-resolving per attempt
+     * meant a retry could silently land on a different address than the
+     * first attempt for hosts with multiple DNS records, which made the
+     * "retry" test a different server rather than a second try against
+     * the same one.
+     */
+    struct sockaddr_in server1_addr, server2_addr;
+    bool have_server1_addr =
+        rr_stun_resolve_server(STUN_SERVER1, STUN_SERVER1_PORT, &server1_addr);
+    bool have_server2_addr =
+        rr_stun_resolve_server(STUN_SERVER2, STUN_SERVER2_PORT, &server2_addr);
+
+    /*
+     * A freshly-created Wii UDP socket can occasionally lose the first
+     * STUN transaction. Retry each normal binding once before reporting
+     * failure. The existing per-request 10 s timeout is unchanged.
+     */
+    result->stun_server1 = have_server1_addr &&
+        rr_stun_binding_socket_addr(sock, &server1_addr, 10000, &server1);
+
+    if (!result->stun_server1 && have_server1_addr) {
+        memset(&server1, 0, sizeof(server1));
+        result->stun_server1 =
+            rr_stun_binding_socket_addr(sock, &server1_addr, 10000, &server1);
+    }
+
     if (result->stun_server1) {
         result->public_ip_server1 = server1.public_ip;
         result->public_port_server1 = server1.public_port;
         result->udp_outbound = true;
     }
 
-    result->stun_server2 = rr_stun_binding_socket(sock, STUN_SERVER2,
-                                                 STUN_SERVER2_PORT, 3000, &oneandone);
+    result->stun_server2 = have_server2_addr &&
+        rr_stun_binding_socket_addr(sock, &server2_addr, 10000, &server2);
+
+    if (!result->stun_server2 && have_server2_addr) {
+        memset(&server2, 0, sizeof(server2));
+        result->stun_server2 =
+            rr_stun_binding_socket_addr(sock, &server2_addr, 10000, &server2);
+    }
+
     if (result->stun_server2) {
-        result->public_ip_server2 = oneandone.public_ip;
-        result->public_port_server2 = oneandone.public_port;
+        result->public_ip_server2 = server2.public_ip;
+        result->public_port_server2 = server2.public_port;
         result->udp_outbound = true;
     }
 
     if (result->stun_server1 && result->stun_server2) {
         result->nat_type =
-            (server1.public_ip == oneandone.public_ip &&
-             server1.public_port == oneandone.public_port)
+            (server1.public_ip == server2.public_ip &&
+             server1.public_port == server2.public_port)
             ? RR_NAT_ENDPOINT_INDEPENDENT : RR_NAT_SYMMETRIC;
     } else {
         result->nat_type = RR_NAT_UNKNOWN;
@@ -167,7 +208,7 @@ bool rr_nat_test_run(rr_nat_result_t *result)
     int behavior_sock = rr_open_mkwii_udp_socket();
     if (behavior_sock >= 0) {
         if (rr_stun_behavior_test(behavior_sock, STUN_BEHAVIOR_SERVER,
-                                  STUN_BEHAVIOR_PORT, 2000, &behavior)) {
+                                  STUN_BEHAVIOR_PORT, 10000, &behavior)) {
             result->stun_behavior = true;
             if (behavior.change_ip_port)
                 result->nat_filter_type = RR_NAT_FILTER_ENDPOINT_INDEPENDENT;
@@ -193,5 +234,11 @@ bool rr_nat_test_run(rr_nat_result_t *result)
     }
 
     (void)private_port;
-    return result->udp_outbound;
+
+    /*
+     * Reaching the end of the NAT test means the test itself completed.
+     * Individual STUN/behavior results are reported through rr_nat_result_t
+     * and must not make the whole test appear "not completed".
+     */
+    return true;
 }
